@@ -1,8 +1,8 @@
 from __future__ import annotations
-from datetime import datetime
+from datetime import date, datetime
 import uuid
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -11,6 +11,15 @@ from .database import Base
 def uid() -> str:
     return str(uuid.uuid4())
 
+class Country(Base):
+    __tablename__ = "country"
+    __table_args__ = {"schema": "core"}
+    code: Mapped[str] = mapped_column(String(2), primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    eu_member: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    eea_member: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="ACTIVE", nullable=False)
+
 class LegalEntity(Base):
     __tablename__ = "legal_entity"
     __table_args__ = {"schema": "core"}
@@ -18,7 +27,7 @@ class LegalEntity(Base):
     legal_name: Mapped[str] = mapped_column(String(255))
     display_name: Mapped[str | None] = mapped_column(String(255))
     entity_type: Mapped[str] = mapped_column(String(50))
-    country_code: Mapped[str | None] = mapped_column(String(2))
+    country_code: Mapped[str | None] = mapped_column(ForeignKey("core.country.code"))
     status: Mapped[str] = mapped_column(String(30), default="ACTIVE")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -41,18 +50,71 @@ class BusinessUnit(Base):
     __table_args__ = {"schema": "org"}
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     organisation_id: Mapped[str] = mapped_column(ForeignKey("org.organisation.legal_entity_id"))
+    parent_unit_id: Mapped[str | None] = mapped_column(ForeignKey("org.business_unit.id"))
     name: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str | None] = mapped_column(Text)
+    owner_person_id: Mapped[str | None] = mapped_column(ForeignKey("org.person.id"))
+    status: Mapped[str] = mapped_column(String(30), default="ACTIVE")
+
+class Person(Base):
+    __tablename__ = "person"
+    __table_args__ = (
+        UniqueConstraint("organisation_id", "email", name="uq_person_org_email"),
+        {"schema": "org"},
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    organisation_id: Mapped[str] = mapped_column(ForeignKey("org.organisation.legal_entity_id"))
+    business_unit_id: Mapped[str | None] = mapped_column(ForeignKey("org.business_unit.id"))
+    manager_person_id: Mapped[str | None] = mapped_column(ForeignKey("org.person.id"))
+    employee_id: Mapped[str | None] = mapped_column(String(120))
+    first_name: Mapped[str] = mapped_column(String(120))
+    last_name: Mapped[str] = mapped_column(String(120))
+    display_name: Mapped[str] = mapped_column(String(255))
+    email: Mapped[str | None] = mapped_column(String(255))
+    job_title: Mapped[str | None] = mapped_column(String(255))
+    employment_type: Mapped[str | None] = mapped_column(String(60))
+    country_code: Mapped[str | None] = mapped_column(ForeignKey("core.country.code"))
+    authority_level: Mapped[str | None] = mapped_column(String(60))
+    active_from: Mapped[date | None] = mapped_column(Date)
+    active_to: Mapped[date | None] = mapped_column(Date)
+    status: Mapped[str] = mapped_column(String(30), default="ACTIVE")
+
+class Group(Base):
+    __tablename__ = "group"
+    __table_args__ = (
+        UniqueConstraint("organisation_id", "name", "group_type", name="uq_group_org_name_type"),
+        {"schema": "org"},
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    organisation_id: Mapped[str] = mapped_column(ForeignKey("org.organisation.legal_entity_id"))
+    group_type: Mapped[str] = mapped_column(String(30))
+    name: Mapped[str] = mapped_column(String(255))
+    owner_person_id: Mapped[str | None] = mapped_column(ForeignKey("org.person.id"))
     description: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(30), default="ACTIVE")
 
-class ResponsibleParty(Base):
-    __tablename__ = "responsible_party"
+class RoleAssignment(Base):
+    __tablename__ = "role_assignment"
     __table_args__ = {"schema": "org"}
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
-    organisation_id: Mapped[str] = mapped_column(ForeignKey("org.organisation.legal_entity_id"))
-    party_type: Mapped[str] = mapped_column(String(30))
-    display_name: Mapped[str] = mapped_column(String(255))
+    person_id: Mapped[str | None] = mapped_column(ForeignKey("org.person.id"))
+    group_id: Mapped[str | None] = mapped_column(ForeignKey("org.group.id"))
+    role_type: Mapped[str] = mapped_column(String(80))
+    governed_object_id: Mapped[str | None] = mapped_column(ForeignKey("core.governed_object.id"))
+    valid_from: Mapped[date | None] = mapped_column(Date)
+    valid_to: Mapped[date | None] = mapped_column(Date)
     status: Mapped[str] = mapped_column(String(30), default="ACTIVE")
+
+class PersonQualification(Base):
+    __tablename__ = "person_qualification"
+    __table_args__ = {"schema": "org"}
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    person_id: Mapped[str] = mapped_column(ForeignKey("org.person.id"))
+    qualification_type: Mapped[str] = mapped_column(String(100))
+    status: Mapped[str] = mapped_column(String(30), default="CURRENT")
+    issued_at: Mapped[date | None] = mapped_column(Date)
+    valid_until: Mapped[date | None] = mapped_column(Date)
+    evidence_reference: Mapped[str | None] = mapped_column(Text)
 
 class AIUseCase(Base):
     __tablename__ = "ai_use_case"
@@ -64,7 +126,7 @@ class AIUseCase(Base):
     business_purpose: Mapped[str] = mapped_column(Text)
     intended_outcome: Mapped[str | None] = mapped_column(Text)
     business_process: Mapped[str | None] = mapped_column(String(120))
-    business_owner_id: Mapped[str] = mapped_column(ForeignKey("org.responsible_party.id"))
+    business_owner_id: Mapped[str] = mapped_column(ForeignKey("org.person.id"))
     lifecycle_status: Mapped[str] = mapped_column(String(30), default="ASSESSMENT")
 
 class AISystem(Base):
@@ -106,7 +168,7 @@ class DeploymentGeography(Base):
     __table_args__ = {"schema": "ai"}
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     deployment_context_id: Mapped[str] = mapped_column(ForeignKey("ai.deployment_context.id"))
-    country_code: Mapped[str] = mapped_column(String(2))
+    country_code: Mapped[str] = mapped_column(ForeignKey("core.country.code"))
     usage_type: Mapped[str] = mapped_column(String(40), default="AFFECTED_PERSON_LOCATION")
 
 class AffectedPopulation(Base):

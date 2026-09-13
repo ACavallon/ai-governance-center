@@ -1,10 +1,52 @@
 from sqlalchemy.orm import Session
-from .models import NormativeSource, SourceVersion, Requirement, Rule, RuleVersion, GuidedQuestion
+from .models import (
+    NormativeSource, SourceVersion, Requirement, Rule, RuleVersion, GuidedQuestion,
+    Country, LegalEntity, Organisation, BusinessUnit, Person, Group, PersonQualification
+)
+from .countries import COUNTRIES
 
 AI_ACT_URL = "https://eur-lex.europa.eu/eli/reg/2024/1689/2026-07-27/eng"
 
 
 def seed_reference_data(db: Session) -> None:
+    # Reference data is seeded independently so later versions can add directory/reference
+    # records without being blocked by an already-seeded normative source.
+    if db.query(Country).count() == 0:
+        db.add_all([Country(code=code, name=name, eu_member=eu, eea_member=eea) for code, name, eu, eea in COUNTRIES])
+        db.flush()
+
+    entity = db.query(LegalEntity).filter_by(legal_name="Demo Company EU").first()
+    if not entity:
+        entity = LegalEntity(legal_name="Demo Company EU", display_name="Demo Company", entity_type="OUR_ORGANISATION", country_code="FR")
+        db.add(entity); db.flush()
+        db.add(Organisation(legal_entity_id=entity.id)); db.flush()
+    org = db.get(Organisation, entity.id)
+    bu = db.query(BusinessUnit).filter_by(organisation_id=entity.id, name="Human Resources").first()
+    if not bu:
+        bu = BusinessUnit(organisation_id=entity.id, name="Human Resources")
+        db.add(bu); db.flush()
+
+    demo_people = [
+        ("Anna", "Rossi", "anna.rossi@example.com", "Head of Human Resources", "FR", "EXECUTIVE"),
+        ("Marco", "Bianchi", "marco.bianchi@example.com", "HR Technology Lead", "IT", "MANAGER"),
+        ("Sophie", "Martin", "sophie.martin@example.com", "AI Governance Lead", "FR", "GOVERNANCE_APPROVER"),
+    ]
+    people = {}
+    for first, last, email, title, country, authority in demo_people:
+        person = db.query(Person).filter_by(organisation_id=entity.id, email=email).first()
+        if not person:
+            person = Person(organisation_id=entity.id, business_unit_id=bu.id, first_name=first, last_name=last, display_name=f"{first} {last}", email=email, job_title=title, employment_type="EMPLOYEE", country_code=country, authority_level=authority)
+            db.add(person); db.flush()
+        people[email] = person
+    if not bu.owner_person_id:
+        bu.owner_person_id = people["anna.rossi@example.com"].id
+    committee = db.query(Group).filter_by(organisation_id=entity.id, name="AI Governance Committee", group_type="COMMITTEE").first()
+    if not committee:
+        db.add(Group(organisation_id=entity.id, group_type="COMMITTEE", name="AI Governance Committee", owner_person_id=people["sophie.martin@example.com"].id, description="Cross-functional AI governance approval body."))
+    if not db.query(PersonQualification).filter_by(person_id=people["sophie.martin@example.com"].id, qualification_type="AI_GOVERNANCE_REVIEWER").first():
+        db.add(PersonQualification(person_id=people["sophie.martin@example.com"].id, qualification_type="AI_GOVERNANCE_REVIEWER", status="CURRENT"))
+    db.commit()
+
     if db.query(NormativeSource).filter_by(source_code="EU_AI_ACT").first():
         return
 

@@ -31,13 +31,22 @@ def ensure_demo_org(db: Session):
 
 def create_ai_use(db: Session, payload: AIUseCreate) -> dict:
     org_entity, _, bu = ensure_demo_org(db)
-    owner = models.ResponsibleParty(organisation_id=org_entity.id, party_type="PERSON", display_name=payload.owner_name)
-    db.add(owner); db.flush()
+    owner = db.get(models.Person, payload.owner_person_id)
+    if not owner or owner.status != "ACTIVE" or owner.organisation_id != org_entity.id:
+        raise ValueError("Business owner must be an active person in the organisation directory")
+
+    valid_country_codes = {c.code for c in db.query(models.Country).filter(models.Country.code.in_(payload.countries)).all()}
+    invalid_countries = sorted(set(payload.countries) - valid_country_codes)
+    if invalid_countries:
+        raise ValueError(f"Unknown country code(s): {', '.join(invalid_countries)}")
 
     supplier_id = None
     if payload.supply_model == "third_party" and payload.supplier_name:
-        supplier = models.LegalEntity(legal_name=payload.supplier_name, display_name=payload.supplier_name, entity_type="VENDOR")
-        db.add(supplier); db.flush(); supplier_id = supplier.id
+        supplier = db.query(models.LegalEntity).filter_by(legal_name=payload.supplier_name).first()
+        if not supplier:
+            supplier = models.LegalEntity(legal_name=payload.supplier_name, display_name=payload.supplier_name, entity_type="VENDOR")
+            db.add(supplier); db.flush()
+        supplier_id = supplier.id
 
     uc_id = new_governed(db, "AI_USE_CASE")
     use_case = models.AIUseCase(id=uc_id, business_unit_id=bu.id, name=payload.name, business_purpose=payload.business_purpose,
@@ -75,8 +84,9 @@ def create_ai_use(db: Session, payload: AIUseCreate) -> dict:
         },
     }
     for field, value in [
-        ("business_purpose", payload.business_purpose), ("system_name", payload.system_name),
-        ("decision_domain", payload.decision_domain), ("function", payload.function), ("countries", payload.countries)
+        ("business_purpose", payload.business_purpose), ("business_owner_id", payload.owner_person_id),
+        ("system_name", payload.system_name), ("decision_domain", payload.decision_domain),
+        ("function", payload.function), ("countries", payload.countries)
     ]:
         db.add(models.FactProvenance(entity_type="DEPLOYMENT_CONTEXT", entity_id=dep_id, field_name=field,
                                      source_type="USER_INPUT", source_reference="guided_onboarding"))
@@ -170,7 +180,7 @@ def get_ai_card(db: Session, ai_use_id: str) -> dict:
     system = db.get(models.AISystem, link.system_id)
     dep = db.query(models.DeploymentContext).filter_by(use_case_id=ai_use_id, system_id=system.id).first()
     case = db.query(models.GovernanceCase).filter_by(deployment_context_id=dep.id).order_by(models.GovernanceCase.opened_at.desc()).first()
-    owner = db.get(models.ResponsibleParty, use_case.business_owner_id)
+    owner = db.get(models.Person, use_case.business_owner_id)
     geos = [r.country_code for r in db.query(models.DeploymentGeography).filter_by(deployment_context_id=dep.id).all()]
     pop = db.query(models.AffectedPopulation).filter_by(deployment_context_id=dep.id).first()
     di = db.get(models.DecisionInvolvement, dep.id)
