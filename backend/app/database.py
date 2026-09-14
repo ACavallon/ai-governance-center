@@ -3,7 +3,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./governance-dev.db")
-SCHEMAS = ["core", "org", "ai", "normative", "rules", "governance", "assessment", "risk", "control", "monitoring", "event", "ux", "audit"]
+SCHEMAS = ["core", "org", "ai", "normative", "rules", "governance", "assessment", "risk", "control", "monitoring", "event", "ux", "audit", "learning"]
 
 class Base(DeclarativeBase):
     pass

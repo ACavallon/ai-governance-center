@@ -106,3 +106,17 @@ class IncidentCreate(BaseModel):
     severity: str = Field(default="MEDIUM", pattern="^(LOW|MEDIUM|HIGH|CRITICAL)$")
     actual_harm: str | None = None
     potential_harm: str | None = None
+
+class RoleAssignmentCreate(BaseModel):
+    role_id: str
+    person_id: str | None = None
+    group_id: str | None = None
+    assignment_scope: str = Field(default="ORGANISATION", pattern="^(ORGANISATION|AI_USE|DEPLOYMENT|GOVERNANCE_CASE)$")
+    governed_object_id: str | None = None
+
+class CompletionCreate(BaseModel):
+    person_id: str
+    course_id: str
+    completed_at: date
+    valid_until: date | None = None
+    evidence_reference: str | None = None

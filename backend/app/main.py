@@ -21,7 +21,7 @@ from .models import (
     GuidedQuestion, AIUseCase, Country, Person, Group, PersonQualification, BusinessUnit
 )
 
-app = FastAPI(title="AI Governance Center API", version="0.0.4")
+app = FastAPI(title="AI Governance Center API", version="0.0.5")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[os.getenv("FRONTEND_ORIGIN", "http://localhost:8080"), "http://127.0.0.1:8080"],
@@ -43,7 +43,7 @@ def startup():
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "version": "0.0.4"}
+    return {"status": "ok", "version": "0.0.5"}
 
 
 @app.get("/api/reference/countries")
@@ -287,3 +287,105 @@ def report_incident(case_id: str, payload: IncidentCreate, db: Session = Depends
         return create_incident(db, case_id, payload)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+
+# --- v0.0.5 guide, organisation governance, RACI and learning ---
+from datetime import date as _date
+from .models import (
+    GuideContent, GovernanceResponsibility, GovernanceRole, RoleResponsibility,
+    GovernanceRoleAssignment, Course, RoleTrainingRequirement, CourseCompletion,
+    LearningAssignment,
+)
+
+
+def _person_training_readiness(db: Session, person_id: str) -> dict:
+    assignments = db.query(GovernanceRoleAssignment).filter_by(person_id=person_id, status="ACTIVE").all()
+    role_ids = [a.role_id for a in assignments]
+    reqs = db.query(RoleTrainingRequirement).filter(RoleTrainingRequirement.role_id.in_(role_ids)).all() if role_ids else []
+    mandatory = {(r.role_id, r.course_id): r for r in reqs if r.requirement_level == "MANDATORY"}
+    course_ids = list({r.course_id for r in reqs})
+    completions = db.query(CourseCompletion).filter(CourseCompletion.person_id == person_id, CourseCompletion.course_id.in_(course_ids)).all() if course_ids else []
+    current = set()
+    today = _date.today()
+    for c in completions:
+        if c.status == "CURRENT" and (c.valid_until is None or c.valid_until >= today):
+            current.add(c.course_id)
+    missing = []
+    for (_, course_id), req in mandatory.items():
+        if course_id not in current:
+            course = db.get(Course, course_id)
+            role = db.get(GovernanceRole, req.role_id)
+            missing.append({"course_id": course_id, "course": course.title if course else course_id, "role": role.name if role else req.role_id})
+    return {"ready": len(missing) == 0, "mandatory_required": len(mandatory), "missing_mandatory": missing}
+
+
+@app.get("/api/guide")
+def guide(section: str | None = None, db: Session = Depends(get_db)):
+    query = db.query(GuideContent).filter(GuideContent.status == "ACTIVE")
+    if section:
+        query = query.filter(GuideContent.section == section.upper())
+    rows = query.order_by(GuideContent.sequence).all()
+    return [{
+        "code": x.code, "section": x.section, "journey_stage": x.journey_stage, "title": x.title,
+        "summary": x.summary, "why_it_matters": x.why_it_matters, "expected_input": x.expected_input,
+        "responsible_role": x.responsible_role, "next_step": x.next_step, "source_reference": x.source_reference,
+        "version": x.version,
+    } for x in rows]
+
+
+@app.get("/api/governance/responsibilities")
+def governance_responsibilities(db: Session = Depends(get_db)):
+    rows = db.query(GovernanceResponsibility).filter_by(status="ACTIVE").order_by(GovernanceResponsibility.lifecycle_stage, GovernanceResponsibility.name).all()
+    return [{"id": x.id, "code": x.code, "name": x.name, "description": x.description, "lifecycle_stage": x.lifecycle_stage, "source_reference": x.source_reference} for x in rows]
+
+
+@app.get("/api/governance/roles")
+def governance_roles(db: Session = Depends(get_db)):
+    roles = db.query(GovernanceRole).filter_by(status="ACTIVE").order_by(GovernanceRole.name).all()
+    result = []
+    for role in roles:
+        mappings = db.query(RoleResponsibility).filter_by(role_id=role.id).all()
+        training = db.query(RoleTrainingRequirement).filter_by(role_id=role.id).all()
+        result.append({
+            "id": role.id, "code": role.code, "name": role.name, "description": role.description, "scope_type": role.scope_type,
+            "responsibilities": [{
+                "responsibility_id": m.responsibility_id,
+                "responsibility": db.get(GovernanceResponsibility, m.responsibility_id).name,
+                "raci": m.raci_type,
+                "stage": db.get(GovernanceResponsibility, m.responsibility_id).lifecycle_stage,
+            } for m in mappings],
+            "training_requirements": [{
+                "course_id": t.course_id, "course": db.get(Course, t.course_id).title,
+                "requirement_level": t.requirement_level, "rationale": t.rationale,
+            } for t in training],
+        })
+    return result
+
+
+@app.get("/api/learning/courses")
+def learning_courses(db: Session = Depends(get_db)):
+    rows = db.query(Course).filter_by(status="ACTIVE").order_by(Course.title).all()
+    return [{"id": c.id, "code": c.code, "title": c.title, "description": c.description, "provider": c.provider, "validity_months": c.validity_months} for c in rows]
+
+
+@app.get("/api/learning/dashboard")
+def learning_dashboard(db: Session = Depends(get_db)):
+    people = db.query(Person).filter_by(status="ACTIVE").all()
+    roles = db.query(GovernanceRole).filter_by(status="ACTIVE").all()
+    person_rows = []
+    for p in people:
+        assignments = db.query(GovernanceRoleAssignment).filter_by(person_id=p.id, status="ACTIVE").all()
+        role_names = [db.get(GovernanceRole, a.role_id).name for a in assignments if db.get(GovernanceRole, a.role_id)]
+        readiness = _person_training_readiness(db, p.id)
+        person_rows.append({"person_id": p.id, "name": p.display_name, "roles": role_names, "training": readiness})
+    course_rows=[]
+    for c in db.query(Course).filter_by(status="ACTIVE").all():
+        required_people=set()
+        for rr in db.query(RoleTrainingRequirement).filter_by(course_id=c.id).all():
+            for a in db.query(GovernanceRoleAssignment).filter_by(role_id=rr.role_id, status="ACTIVE").all():
+                if a.person_id: required_people.add(a.person_id)
+        current=0
+        for pid in required_people:
+            comp=db.query(CourseCompletion).filter_by(person_id=pid, course_id=c.id, status="CURRENT").order_by(CourseCompletion.completed_at.desc()).first()
+            if comp and (comp.valid_until is None or comp.valid_until >= _date.today()): current+=1
+        course_rows.append({"course_id":c.id,"course":c.title,"assigned":len(required_people),"current":current,"coverage":round((current/len(required_people))*100) if required_people else None})
+    return {"people": person_rows, "courses": course_rows, "roles": len(roles), "people_ready": sum(1 for p in person_rows if p["training"]["ready"]), "people_with_gaps": sum(1 for p in person_rows if not p["training"]["ready"])}

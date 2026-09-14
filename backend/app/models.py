@@ -626,3 +626,145 @@ class Reassessment(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime)
     status: Mapped[str] = mapped_column(String(30), default="OPEN")
     outcome: Mapped[str | None] = mapped_column(String(60))
+
+# --- v0.0.5 organisation governance, accountability, guide and learning ---
+class GovernanceResponsibility(Base):
+    __tablename__ = "responsibility"
+    __table_args__ = {"schema": "governance"}
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    code: Mapped[str] = mapped_column(String(80), unique=True)
+    name: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str] = mapped_column(Text)
+    lifecycle_stage: Mapped[str | None] = mapped_column(String(60))
+    source_reference: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(30), default="ACTIVE")
+
+class GovernanceRole(Base):
+    __tablename__ = "role"
+    __table_args__ = {"schema": "governance"}
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    code: Mapped[str] = mapped_column(String(80), unique=True)
+    name: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str | None] = mapped_column(Text)
+    scope_type: Mapped[str] = mapped_column(String(40), default="ORGANISATION")
+    status: Mapped[str] = mapped_column(String(30), default="ACTIVE")
+
+class RoleResponsibility(Base):
+    __tablename__ = "role_responsibility"
+    __table_args__ = (
+        UniqueConstraint("role_id", "responsibility_id", name="uq_role_responsibility"),
+        {"schema": "governance"},
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    role_id: Mapped[str] = mapped_column(ForeignKey("governance.role.id"))
+    responsibility_id: Mapped[str] = mapped_column(ForeignKey("governance.responsibility.id"))
+    raci_type: Mapped[str] = mapped_column(String(20))
+    mandatory: Mapped[bool] = mapped_column(Boolean, default=True)
+
+class GovernanceRoleAssignment(Base):
+    __tablename__ = "governance_role_assignment"
+    __table_args__ = {"schema": "org"}
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    role_id: Mapped[str] = mapped_column(ForeignKey("governance.role.id"))
+    person_id: Mapped[str | None] = mapped_column(ForeignKey("org.person.id"))
+    group_id: Mapped[str | None] = mapped_column(ForeignKey("org.group.id"))
+    governed_object_id: Mapped[str | None] = mapped_column(ForeignKey("core.governed_object.id"))
+    assignment_scope: Mapped[str] = mapped_column(String(40), default="ORGANISATION")
+    valid_from: Mapped[date | None] = mapped_column(Date)
+    valid_to: Mapped[date | None] = mapped_column(Date)
+    status: Mapped[str] = mapped_column(String(30), default="ACTIVE")
+
+class Competency(Base):
+    __tablename__ = "competency"
+    __table_args__ = {"schema": "learning"}
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    code: Mapped[str] = mapped_column(String(80), unique=True)
+    name: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(30), default="ACTIVE")
+
+class Course(Base):
+    __tablename__ = "course"
+    __table_args__ = {"schema": "learning"}
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    code: Mapped[str] = mapped_column(String(80), unique=True)
+    title: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str | None] = mapped_column(Text)
+    provider: Mapped[str | None] = mapped_column(String(255))
+    delivery_type: Mapped[str] = mapped_column(String(40), default="EXTERNAL_OR_LMS")
+    validity_months: Mapped[int | None] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(30), default="ACTIVE")
+
+class TrainingProgram(Base):
+    __tablename__ = "training_program"
+    __table_args__ = {"schema": "learning"}
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    code: Mapped[str] = mapped_column(String(80), unique=True)
+    name: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(30), default="ACTIVE")
+
+class TrainingProgramCourse(Base):
+    __tablename__ = "training_program_course"
+    __table_args__ = (
+        UniqueConstraint("training_program_id", "course_id", name="uq_training_program_course"),
+        {"schema": "learning"},
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    training_program_id: Mapped[str] = mapped_column(ForeignKey("learning.training_program.id"))
+    course_id: Mapped[str] = mapped_column(ForeignKey("learning.course.id"))
+    sequence: Mapped[int] = mapped_column(Integer, default=1)
+    requirement_level: Mapped[str] = mapped_column(String(30), default="MANDATORY")
+
+class RoleTrainingRequirement(Base):
+    __tablename__ = "role_training_requirement"
+    __table_args__ = (
+        UniqueConstraint("role_id", "course_id", name="uq_role_training_requirement"),
+        {"schema": "learning"},
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    role_id: Mapped[str] = mapped_column(ForeignKey("governance.role.id"))
+    course_id: Mapped[str] = mapped_column(ForeignKey("learning.course.id"))
+    requirement_level: Mapped[str] = mapped_column(String(30), default="MANDATORY")
+    rationale: Mapped[str | None] = mapped_column(Text)
+
+class LearningAssignment(Base):
+    __tablename__ = "learning_assignment"
+    __table_args__ = {"schema": "learning"}
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    person_id: Mapped[str] = mapped_column(ForeignKey("org.person.id"))
+    course_id: Mapped[str] = mapped_column(ForeignKey("learning.course.id"))
+    source_role_id: Mapped[str | None] = mapped_column(ForeignKey("governance.role.id"))
+    due_date: Mapped[date | None] = mapped_column(Date)
+    status: Mapped[str] = mapped_column(String(30), default="ASSIGNED")
+    assigned_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+class CourseCompletion(Base):
+    __tablename__ = "course_completion"
+    __table_args__ = {"schema": "learning"}
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    person_id: Mapped[str] = mapped_column(ForeignKey("org.person.id"))
+    course_id: Mapped[str] = mapped_column(ForeignKey("learning.course.id"))
+    completed_at: Mapped[date] = mapped_column(Date)
+    valid_until: Mapped[date | None] = mapped_column(Date)
+    status: Mapped[str] = mapped_column(String(30), default="CURRENT")
+    evidence_reference: Mapped[str | None] = mapped_column(Text)
+
+class GuideContent(Base):
+    __tablename__ = "guide_content"
+    __table_args__ = {"schema": "ux"}
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    code: Mapped[str] = mapped_column(String(100), unique=True)
+    section: Mapped[str] = mapped_column(String(80))
+    audience: Mapped[str] = mapped_column(String(80), default="ALL")
+    journey_stage: Mapped[str | None] = mapped_column(String(60))
+    title: Mapped[str] = mapped_column(String(255))
+    summary: Mapped[str] = mapped_column(Text)
+    why_it_matters: Mapped[str | None] = mapped_column(Text)
+    expected_input: Mapped[str | None] = mapped_column(Text)
+    responsible_role: Mapped[str | None] = mapped_column(String(255))
+    next_step: Mapped[str | None] = mapped_column(Text)
+    source_reference: Mapped[str | None] = mapped_column(Text)
+    sequence: Mapped[int] = mapped_column(Integer, default=1)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    status: Mapped[str] = mapped_column(String(30), default="ACTIVE")
