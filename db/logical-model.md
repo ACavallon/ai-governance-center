@@ -82,4 +82,4 @@ Training completion and competence remain distinct concepts. A future qualificat
 - The same content model is intended to support the Guide hub and contextual “why we ask” help.
 
 ### Database lifecycle
-v0.0.5 introduces Alembic. Revision `0004_v004_baseline` represents the pre-migration schema and `0005_governance_guide_people_learning` adds the new organisation-governance, guide and learning entities. Future schema changes must be represented by migration revisions.
+v0.0.5 introduces Alembic. Revision `0004_v004_baseline` represents the pre-migration schema and `0005_gov_people_learning` adds the new organisation-governance, guide and learning entities. Future schema changes must be represented by migration revisions.

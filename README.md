@@ -146,6 +146,8 @@ alembic upgrade head
 
 Do not use `Base.metadata.create_all()` as a substitute for future production migrations.
 
+Alembic revision IDs are kept at **32 characters or fewer** to remain compatible with the default `alembic_version.version_num` column. The test suite includes a guard for this constraint.
+
 ## Validation
 
 v0.0.5 passes the prototype integration suite covering:
@@ -158,7 +160,7 @@ v0.0.5 passes the prototype integration suite covering:
 - dynamic governance roles/RACI;
 - role-based training requirements and seeded completion records.
 
-Current local test result: **6 passed**.
+Current local test result: **7 passed**.
 
 ## Current limitations
 
