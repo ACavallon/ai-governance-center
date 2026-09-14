@@ -1,11 +1,68 @@
 from sqlalchemy.orm import Session
 from .models import (
     NormativeSource, SourceVersion, Requirement, Rule, RuleVersion, GuidedQuestion,
-    Country, LegalEntity, Organisation, BusinessUnit, Person, Group, PersonQualification
+    Country, LegalEntity, Organisation, BusinessUnit, Person, Group, PersonQualification,
+    AssessmentTemplate, ControlObjective, Control, RequirementControlMapping
 )
 from .countries import COUNTRIES
 
 AI_ACT_URL = "https://eur-lex.europa.eu/eli/reg/2024/1689/2026-07-27/eng"
+
+
+def _seed_phase_c(db: Session) -> None:
+    template = db.query(AssessmentTemplate).filter_by(template_code="AI_RISK_GENERAL").first()
+    if not template:
+        db.add(AssessmentTemplate(
+            template_code="AI_RISK_GENERAL",
+            name="AI risk & impact review",
+            assessment_type="AI_RISK",
+            description="Plain-language review of material AI risks, impacts and safeguards before approval.",
+            source_type="INTEGRATED_GOVERNANCE",
+            version=1,
+        ))
+        db.flush()
+
+    objectives = {
+        "OBJ-HO-001": ("Maintain effective human oversight", "Ensure people can critically review and intervene in AI-supported decisions.", "HUMAN_OVERSIGHT"),
+        "OBJ-FAIR-001": ("Detect material group disparities", "Evaluate whether performance differs materially across affected groups.", "FAIRNESS"),
+        "OBJ-TRN-001": ("Prepare people for AI oversight", "Ensure people responsible for AI oversight understand the system, limitations and intervention process.", "TRAINING"),
+        "OBJ-MON-001": ("Monitor operational AI risk", "Track performance and risk indicators after deployment.", "MONITORING"),
+    }
+    obj_rows = {}
+    for code, (name, desc, domain) in objectives.items():
+        row = db.query(ControlObjective).filter_by(objective_code=code).first()
+        if not row:
+            row = ControlObjective(objective_code=code, name=name, description=desc, governance_domain=domain)
+            db.add(row); db.flush()
+        obj_rows[code] = row
+
+    controls = {
+        "CTRL-HO-001": ("OBJ-HO-001", "Human review before adverse decision", "A qualified person reviews material AI recommendations and can override or stop the outcome.", "PREVENTIVE", "MANUAL", "PER_DECISION"),
+        "CTRL-FAIR-001": ("OBJ-FAIR-001", "Fairness testing by affected group", "Evaluate relevant performance measures across affected groups before approval and after material change.", "DETECTIVE", "HYBRID", "ON_CHANGE"),
+        "CTRL-TRN-001": ("OBJ-TRN-001", "Human overseer training", "People assigned to oversight receive role-appropriate training and understand when and how to intervene.", "PREVENTIVE", "MANUAL", "ANNUAL"),
+        "CTRL-MON-001": ("OBJ-MON-001", "Performance and fairness monitoring", "Monitor approved performance and fairness indicators during operation and escalate material deviations.", "DETECTIVE", "HYBRID", "PERIODIC"),
+    }
+    ctl_rows = {}
+    for code, (obj_code, name, desc, ctype, mode, freq) in controls.items():
+        row = db.query(Control).filter_by(control_code=code).first()
+        if not row:
+            row = Control(control_code=code, objective_id=obj_rows[obj_code].id, name=name, description=desc,
+                          control_type=ctype, execution_mode=mode, frequency_type=freq)
+            db.add(row); db.flush()
+        ctl_rows[code] = row
+
+    req_human = db.query(Requirement).filter_by(requirement_code="AIA-HO-001").first()
+    req_risk = db.query(Requirement).filter_by(requirement_code="AIA-RISK-001").first()
+    mapping_specs = []
+    if req_human:
+        mapping_specs += [(req_human, ctl_rows["CTRL-HO-001"], "FULL"), (req_human, ctl_rows["CTRL-TRN-001"], "SUPPORTING")]
+    if req_risk:
+        mapping_specs += [(req_risk, ctl_rows["CTRL-FAIR-001"], "SUPPORTING"), (req_risk, ctl_rows["CTRL-MON-001"], "SUPPORTING")]
+    for req, ctl, coverage in mapping_specs:
+        if not db.query(RequirementControlMapping).filter_by(requirement_id=req.id, control_id=ctl.id).first():
+            db.add(RequirementControlMapping(requirement_id=req.id, control_id=ctl.id, coverage=coverage,
+                                             rationale="Prototype integrated mapping; requires governance validation before production use."))
+    db.commit()
 
 
 def seed_reference_data(db: Session) -> None:
@@ -48,6 +105,7 @@ def seed_reference_data(db: Session) -> None:
     db.commit()
 
     if db.query(NormativeSource).filter_by(source_code="EU_AI_ACT").first():
+        _seed_phase_c(db)
         return
 
     source = NormativeSource(
@@ -139,3 +197,4 @@ def seed_reference_data(db: Session) -> None:
     for code, section, text, why, atype, path, seq in questions:
         db.add(GuidedQuestion(question_code=code, section_code=section, plain_language_text=text, why_we_ask=why, answer_type=atype, canonical_fact_path=path, sequence=seq))
     db.commit()
+    _seed_phase_c(db)

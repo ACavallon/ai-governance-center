@@ -354,3 +354,275 @@ class FactProvenance(Base):
     source_reference: Mapped[str | None] = mapped_column(String(255))
     captured_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     confidence: Mapped[str] = mapped_column(String(30), default="USER_DECLARED")
+
+class AssessmentTemplate(Base):
+    __tablename__ = "template"
+    __table_args__ = {"schema": "assessment"}
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    template_code: Mapped[str] = mapped_column(String(100), unique=True)
+    name: Mapped[str] = mapped_column(String(255))
+    assessment_type: Mapped[str] = mapped_column(String(80))
+    description: Mapped[str | None] = mapped_column(Text)
+    source_type: Mapped[str | None] = mapped_column(String(60))
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    status: Mapped[str] = mapped_column(String(30), default="ACTIVE")
+
+class Assessment(Base):
+    __tablename__ = "assessment"
+    __table_args__ = {"schema": "assessment"}
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    governance_case_id: Mapped[str] = mapped_column(ForeignKey("governance.governance_case.id"))
+    template_id: Mapped[str] = mapped_column(ForeignKey("assessment.template.id"))
+    subject_id: Mapped[str] = mapped_column(ForeignKey("core.governed_object.id"))
+    owner_person_id: Mapped[str | None] = mapped_column(ForeignKey("org.person.id"))
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    status: Mapped[str] = mapped_column(String(30), default="IN_PROGRESS")
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+class Risk(Base):
+    __tablename__ = "risk"
+    __table_args__ = {"schema": "risk"}
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    governed_object_id: Mapped[str] = mapped_column(ForeignKey("core.governed_object.id"))
+    assessment_id: Mapped[str | None] = mapped_column(ForeignKey("assessment.assessment.id"))
+    risk_code: Mapped[str] = mapped_column(String(100), unique=True)
+    title: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str | None] = mapped_column(Text)
+    cause: Mapped[str | None] = mapped_column(Text)
+    risk_event: Mapped[str | None] = mapped_column(Text)
+    potential_consequence: Mapped[str | None] = mapped_column(Text)
+    risk_owner_id: Mapped[str | None] = mapped_column(ForeignKey("org.person.id"))
+    status: Mapped[str] = mapped_column(String(30), default="OPEN")
+    identified_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+class Impact(Base):
+    __tablename__ = "impact"
+    __table_args__ = {"schema": "risk"}
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    risk_id: Mapped[str] = mapped_column(ForeignKey("risk.risk.id"))
+    affected_population_id: Mapped[str | None] = mapped_column(ForeignKey("ai.affected_population.id"))
+    impact_type: Mapped[str] = mapped_column(String(80))
+    description: Mapped[str] = mapped_column(Text)
+    polarity: Mapped[str] = mapped_column(String(20), default="NEGATIVE")
+    magnitude: Mapped[str | None] = mapped_column(String(30))
+    reversibility: Mapped[str | None] = mapped_column(String(30))
+    status: Mapped[str] = mapped_column(String(30), default="CURRENT")
+
+class RiskEvaluation(Base):
+    __tablename__ = "risk_evaluation"
+    __table_args__ = {"schema": "risk"}
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    risk_id: Mapped[str] = mapped_column(ForeignKey("risk.risk.id"))
+    assessment_id: Mapped[str | None] = mapped_column(ForeignKey("assessment.assessment.id"))
+    evaluation_stage: Mapped[str] = mapped_column(String(30))
+    methodology_code: Mapped[str] = mapped_column(String(80), default="QUALITATIVE_V1")
+    criteria_snapshot: Mapped[dict] = mapped_column(JSON)
+    result: Mapped[str] = mapped_column(String(30))
+    uncertainty: Mapped[str | None] = mapped_column(String(30))
+    rationale: Mapped[str | None] = mapped_column(Text)
+    evaluated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+class ControlObjective(Base):
+    __tablename__ = "control_objective"
+    __table_args__ = {"schema": "control"}
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    objective_code: Mapped[str] = mapped_column(String(100), unique=True)
+    name: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str] = mapped_column(Text)
+    governance_domain: Mapped[str] = mapped_column(String(80))
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    status: Mapped[str] = mapped_column(String(30), default="ACTIVE")
+
+class Control(Base):
+    __tablename__ = "control"
+    __table_args__ = {"schema": "control"}
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    control_code: Mapped[str] = mapped_column(String(100), unique=True)
+    objective_id: Mapped[str] = mapped_column(ForeignKey("control.control_objective.id"))
+    name: Mapped[str] = mapped_column(String(255))
+    description: Mapped[str] = mapped_column(Text)
+    control_type: Mapped[str] = mapped_column(String(40), default="PREVENTIVE")
+    execution_mode: Mapped[str] = mapped_column(String(30), default="MANUAL")
+    frequency_type: Mapped[str | None] = mapped_column(String(40))
+    status: Mapped[str] = mapped_column(String(30), default="ACTIVE")
+
+class RequirementControlMapping(Base):
+    __tablename__ = "requirement_mapping"
+    __table_args__ = {"schema": "control"}
+    requirement_id: Mapped[str] = mapped_column(ForeignKey("normative.requirement.id"), primary_key=True)
+    control_id: Mapped[str] = mapped_column(ForeignKey("control.control.id"), primary_key=True)
+    coverage: Mapped[str] = mapped_column(String(30), default="SUPPORTING")
+    rationale: Mapped[str | None] = mapped_column(Text)
+
+class RiskControlMapping(Base):
+    __tablename__ = "risk_mapping"
+    __table_args__ = {"schema": "control"}
+    risk_id: Mapped[str] = mapped_column(ForeignKey("risk.risk.id"), primary_key=True)
+    control_id: Mapped[str] = mapped_column(ForeignKey("control.control.id"), primary_key=True)
+    coverage: Mapped[str] = mapped_column(String(30), default="SUPPORTING")
+    rationale: Mapped[str | None] = mapped_column(Text)
+
+class ControlImplementation(Base):
+    __tablename__ = "control_implementation"
+    __table_args__ = {"schema": "control"}
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    control_id: Mapped[str] = mapped_column(ForeignKey("control.control.id"))
+    governed_object_id: Mapped[str] = mapped_column(ForeignKey("core.governed_object.id"))
+    implementation_description: Mapped[str | None] = mapped_column(Text)
+    owner_person_id: Mapped[str | None] = mapped_column(ForeignKey("org.person.id"))
+    status: Mapped[str] = mapped_column(String(30), default="PLANNED")
+    execution_mode: Mapped[str | None] = mapped_column(String(30))
+    frequency: Mapped[str | None] = mapped_column(String(40))
+
+class Evidence(Base):
+    __tablename__ = "evidence"
+    __table_args__ = {"schema": "control"}
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    title: Mapped[str] = mapped_column(String(255))
+    evidence_type: Mapped[str] = mapped_column(String(60))
+    description: Mapped[str | None] = mapped_column(Text)
+    artifact_reference: Mapped[str | None] = mapped_column(Text)
+    generated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    valid_until: Mapped[date | None] = mapped_column(Date)
+    status: Mapped[str] = mapped_column(String(30), default="CURRENT")
+
+class ControlEvidence(Base):
+    __tablename__ = "control_evidence"
+    __table_args__ = {"schema": "control"}
+    control_implementation_id: Mapped[str] = mapped_column(ForeignKey("control.control_implementation.id"), primary_key=True)
+    evidence_id: Mapped[str] = mapped_column(ForeignKey("control.evidence.id"), primary_key=True)
+    evidence_role: Mapped[str] = mapped_column(String(40), default="SUPPORTING")
+
+class GovernanceGateResult(Base):
+    __tablename__ = "gate_result"
+    __table_args__ = {"schema": "governance"}
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    governance_case_id: Mapped[str] = mapped_column(ForeignKey("governance.governance_case.id"))
+    gate_code: Mapped[str] = mapped_column(String(30))
+    result: Mapped[str] = mapped_column(String(30))
+    evaluated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    rationale: Mapped[str | None] = mapped_column(Text)
+    blocking_reasons: Mapped[dict | None] = mapped_column(JSON)
+
+class Decision(Base):
+    __tablename__ = "decision"
+    __table_args__ = {"schema": "governance"}
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    governance_case_id: Mapped[str] = mapped_column(ForeignKey("governance.governance_case.id"))
+    subject_id: Mapped[str] = mapped_column(ForeignKey("core.governed_object.id"))
+    decision_type: Mapped[str] = mapped_column(String(60))
+    outcome: Mapped[str] = mapped_column(String(60))
+    decision_authority_id: Mapped[str] = mapped_column(ForeignKey("org.person.id"))
+    decided_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    rationale: Mapped[str | None] = mapped_column(Text)
+    conditions: Mapped[dict | None] = mapped_column(JSON)
+    valid_until: Mapped[date | None] = mapped_column(Date)
+    status: Mapped[str] = mapped_column(String(30), default="CURRENT")
+
+class ApprovalBaseline(Base):
+    __tablename__ = "approval_baseline"
+    __table_args__ = {"schema": "governance"}
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    decision_id: Mapped[str] = mapped_column(ForeignKey("governance.decision.id"), unique=True)
+    deployment_context_id: Mapped[str] = mapped_column(ForeignKey("ai.deployment_context.id"))
+    system_snapshot: Mapped[dict] = mapped_column(JSON)
+    classification_snapshot: Mapped[dict] = mapped_column(JSON)
+    risk_snapshot: Mapped[dict] = mapped_column(JSON)
+    control_snapshot: Mapped[dict] = mapped_column(JSON)
+    evidence_snapshot: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    content_hash: Mapped[str | None] = mapped_column(String(128))
+
+class MonitoringPlan(Base):
+    __tablename__ = "monitoring_plan"
+    __table_args__ = {"schema": "monitoring"}
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    deployment_context_id: Mapped[str] = mapped_column(ForeignKey("ai.deployment_context.id"))
+    owner_person_id: Mapped[str] = mapped_column(ForeignKey("org.person.id"))
+    purpose: Mapped[str] = mapped_column(Text)
+    review_frequency: Mapped[str] = mapped_column(String(40), default="QUARTERLY")
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    status: Mapped[str] = mapped_column(String(30), default="ACTIVE")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+class MonitoringDefinition(Base):
+    __tablename__ = "monitoring_definition"
+    __table_args__ = {"schema": "monitoring"}
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    monitoring_plan_id: Mapped[str] = mapped_column(ForeignKey("monitoring.monitoring_plan.id"))
+    name: Mapped[str] = mapped_column(String(255))
+    monitoring_type: Mapped[str] = mapped_column(String(60))
+    description: Mapped[str | None] = mapped_column(Text)
+    method: Mapped[str | None] = mapped_column(Text)
+    frequency: Mapped[str] = mapped_column(String(40), default="MONTHLY")
+    status: Mapped[str] = mapped_column(String(30), default="ACTIVE")
+
+class ThresholdRule(Base):
+    __tablename__ = "threshold_rule"
+    __table_args__ = {"schema": "monitoring"}
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    monitoring_definition_id: Mapped[str] = mapped_column(ForeignKey("monitoring.monitoring_definition.id"))
+    operator: Mapped[str] = mapped_column(String(20))
+    threshold_value: Mapped[str] = mapped_column(String(80))
+    severity: Mapped[str] = mapped_column(String(30), default="MEDIUM")
+    breach_action: Mapped[str] = mapped_column(String(60), default="REASSESS")
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    status: Mapped[str] = mapped_column(String(30), default="ACTIVE")
+
+class Observation(Base):
+    __tablename__ = "observation"
+    __table_args__ = {"schema": "monitoring"}
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    monitoring_definition_id: Mapped[str] = mapped_column(ForeignKey("monitoring.monitoring_definition.id"))
+    observed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    value: Mapped[dict | None] = mapped_column(JSON)
+    qualitative_result: Mapped[str | None] = mapped_column(Text)
+    quality_status: Mapped[str] = mapped_column(String(30), default="VALID")
+    threshold_status: Mapped[str] = mapped_column(String(30), default="NOT_EVALUATED")
+
+class GovernanceEvent(Base):
+    __tablename__ = "governance_event"
+    __table_args__ = {"schema": "event"}
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    subject_id: Mapped[str] = mapped_column(ForeignKey("core.governed_object.id"))
+    event_type: Mapped[str] = mapped_column(String(60))
+    occurred_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    detected_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    source: Mapped[str | None] = mapped_column(String(120))
+    severity: Mapped[str] = mapped_column(String(30), default="MEDIUM")
+    description: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(30), default="OPEN")
+
+class ChangeEvent(Base):
+    __tablename__ = "change_event"
+    __table_args__ = {"schema": "event"}
+    governance_event_id: Mapped[str] = mapped_column(ForeignKey("event.governance_event.id"), primary_key=True)
+    change_type: Mapped[str] = mapped_column(String(80))
+    old_state_reference: Mapped[dict | None] = mapped_column(JSON)
+    new_state_reference: Mapped[dict | None] = mapped_column(JSON)
+    materiality: Mapped[str] = mapped_column(String(40), default="UNDETERMINED")
+
+class Incident(Base):
+    __tablename__ = "incident"
+    __table_args__ = {"schema": "event"}
+    governance_event_id: Mapped[str] = mapped_column(ForeignKey("event.governance_event.id"), primary_key=True)
+    incident_category: Mapped[str] = mapped_column(String(80))
+    actual_harm: Mapped[str | None] = mapped_column(Text)
+    potential_harm: Mapped[str | None] = mapped_column(Text)
+    containment_status: Mapped[str] = mapped_column(String(40), default="OPEN")
+    reportability_status: Mapped[str] = mapped_column(String(40), default="NOT_ASSESSED")
+
+class Reassessment(Base):
+    __tablename__ = "reassessment"
+    __table_args__ = {"schema": "event"}
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    governance_case_id: Mapped[str] = mapped_column(ForeignKey("governance.governance_case.id"))
+    trigger_event_id: Mapped[str] = mapped_column(ForeignKey("event.governance_event.id"))
+    starting_domain: Mapped[str] = mapped_column(String(60))
+    reason: Mapped[str] = mapped_column(Text)
+    owner_person_id: Mapped[str | None] = mapped_column(ForeignKey("org.person.id"))
+    opened_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    status: Mapped[str] = mapped_column(String(30), default="OPEN")
+    outcome: Mapped[str | None] = mapped_column(String(60))
